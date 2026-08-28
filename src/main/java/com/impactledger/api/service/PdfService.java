@@ -10,7 +10,7 @@ import com.lowagie.text.pdf.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.awt.*;
+import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.time.LocalDate;
@@ -82,7 +82,7 @@ public class PdfService {
     // ---------------------------------------------------------------------
 
     private void buildAppraisalPdf(Document document, PdfGenerationRequest request, List<Task> tasks,
-                                    String profileName, String profileTitle) throws DocumentException, IOException {
+                                   String profileName, String profileTitle) throws DocumentException, IOException {
         if (request.getAppraisalType() == null) {
             throw new BadRequestException("appraisalType (MIDYEAR or YEAR_END) is required for APPRAISAL mode");
         }
@@ -147,7 +147,7 @@ public class PdfService {
     // ---------------------------------------------------------------------
 
     private void buildMonthlyPdf(Document document, PdfGenerationRequest request, List<Task> tasks,
-                                  String profileName, String profileTitle) throws DocumentException, IOException {
+                                 String profileName, String profileTitle) throws DocumentException, IOException {
         String periodLabel;
         if (request.getCustomStartDate() != null && request.getCustomEndDate() != null) {
             periodLabel = "Progress Update: " + request.getCustomStartDate() + " to " + request.getCustomEndDate();
@@ -286,7 +286,7 @@ public class PdfService {
     }
 
     private void addHighlightsAndRecognition(Document document, Long companyId, List<Task> tasks,
-                                              LocalDate start, LocalDate end) throws DocumentException {
+                                             LocalDate start, LocalDate end) throws DocumentException {
         List<Task> highlights = tasks.stream().filter(Task::isHighlight).toList();
         List<Recognition> recognitions = (start != null && end != null)
                 ? recognitionService.findForPeriod(companyId, start, end)
