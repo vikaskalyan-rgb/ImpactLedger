@@ -1,0 +1,35 @@
+spring:
+  application:
+    name: impactledger-backend
+  datasource:
+    url: ${DATABASE_URL}
+    username: ${DATABASE_USERNAME}
+    password: ${DATABASE_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 5
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: false
+    show-sql: false
+
+server:
+  port: ${PORT:8080}
+
+app:
+  api-key: ${APP_API_KEY:change-me-locally}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  profile:
+    default-name: ${PROFILE_NAME:Vikas}
+    default-title: ${PROFILE_TITLE:Senior Software Engineer}
+
+logging:
+  level:
+    root: INFO
+    com.impactledger: INFO
