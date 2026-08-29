@@ -9,6 +9,7 @@ import com.impactledger.api.entity.enums.TaskStatus;
 import com.impactledger.api.repository.TaskSpecifications;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -30,12 +31,14 @@ public class StatsService {
 
     private static final DateTimeFormatter MONTH_FMT = DateTimeFormatter.ofPattern("yyyy-MM");
 
+    @Transactional(readOnly = true)
     public StatsResponse computeStats(Long companyId, LocalDate startDate, LocalDate endDate) {
         var spec = TaskSpecifications.filter(companyId, null, null, null, null, startDate, endDate, null, null, null);
         List<Task> tasks = taskRepository.findAll(spec);
         return buildStats(tasks);
     }
 
+    @Transactional(readOnly = true)
     public StatsResponse buildStats(List<Task> tasks) {
         long total = tasks.size();
         long completed = tasks.stream().filter(t -> t.getStatus() == TaskStatus.COMPLETED).count();

@@ -9,6 +9,7 @@ import com.lowagie.text.*;
 import com.lowagie.text.pdf.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.awt.Color;
 import java.io.ByteArrayOutputStream;
@@ -47,6 +48,7 @@ public class PdfService {
     private static final Font FONT_STAT_LABEL = FontFactory.getFont(FontFactory.HELVETICA, 8, TEXT_GREY);
     private static final Font FONT_SMALL_ITALIC = FontFactory.getFont(FontFactory.HELVETICA_OBLIQUE, 8, TEXT_GREY);
 
+    @Transactional(readOnly = true)
     public byte[] generate(PdfGenerationRequest request) {
         if (request.getTaskIds() == null || request.getTaskIds().isEmpty()) {
             throw new BadRequestException("Select at least one task to include in the PDF");
@@ -391,7 +393,6 @@ public class PdfService {
     private String monthLabel(LocalDate date) {
         if (date == null) return "Unknown";
         return date.getMonth().getDisplayName(TextStyle.FULL, Locale.ENGLISH) + " " + date.getYear();
-
     }
 
     private LocalDate periodStart(PdfGenerationRequest request) {

@@ -12,6 +12,7 @@ import com.impactledger.api.repository.TaskRepository;
 import com.impactledger.api.repository.TaskSpecifications;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -26,6 +27,7 @@ public class TaskService {
     private final TaskRepository taskRepository;
     private final CompanyService companyService;
 
+    @Transactional(readOnly = true)
     public List<TaskResponse> search(
             Long companyId,
             Priority priority,
@@ -45,6 +47,7 @@ public class TaskService {
         return taskRepository.findAll(spec).stream().map(this::toResponse).toList();
     }
 
+    @Transactional(readOnly = true)
     public TaskResponse getById(Long id) {
         return toResponse(getEntity(id));
     }
@@ -54,6 +57,7 @@ public class TaskService {
                 .orElseThrow(() -> new ResourceNotFoundException("Task not found: " + id));
     }
 
+    @Transactional(readOnly = true)
     public List<Task> getEntitiesByIds(List<Long> ids) {
         List<Task> tasks = taskRepository.findByIdIn(ids);
         if (tasks.size() != new HashSet<>(ids).size()) {
