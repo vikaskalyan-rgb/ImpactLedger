@@ -1,13 +1,38 @@
 spring:
   application:
     name: impactledger-backend
+  main:
+    # Beans only initialize on first use, not at boot. PdfService/ChartImageService
+    # (JFreeChart pulls in AWT graphics machinery) are the heaviest beans in this
+    # app and are only needed for the "Generate PDF" action — no reason to pay
+    # their startup cost on every boot when the Dashboard/Tasks pages never touch them.
+    lazy-initialization: true
   datasource:
     url: ${DATABASE_URL}
     username: ${DATABASE_USERNAME}
     password: ${DATABASE_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: 5
+      maximum-pool-size: 3
+      minimum-idle: 0
+      # Neon's free-tier compute can auto-suspend after ~5 min idle, silently killing
+      # connections server-side. Recycle well before that so Hikari never hands out
+      # a connection Neon has already closed.
+      idle-timeout: 60000
+      max-lifetime: 300000
+      keepalive-time: 30000
+      connection-timeout: 10000
+      validation-timeout: 5000
+      connection-test-query: SELECT 1
+      initialization-fail-timeout: 0
+      data-source-properties:
+        # Required for Neon's pooled (-pooler) endpoint, which runs PgBouncer in
+        # transaction-pooling mode: it can't track server-side prepared statements
+        # across pooled connections, so a "prepared" statement can silently vanish
+        # mid-session. Disabling server-side prepare (the standard PgBouncer-recommended
+        # fix) avoids that entirely.
+        prepareThreshold: 0
+        tcpKeepAlive: true
   jpa:
     hibernate:
       ddl-auto: update
@@ -16,6 +41,11 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: false
+        # Skip Hibernate's startup round-trip to the DB asking about driver
+        # capabilities (batch limits, generated-key support, etc.) — we already
+        # know it's Postgres, so this query is pure wasted boot time.
+        temp:
+          use_jdbc_metadata_defaults: false
     show-sql: false
 
 server:

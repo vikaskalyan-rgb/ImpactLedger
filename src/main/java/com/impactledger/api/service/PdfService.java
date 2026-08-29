@@ -1,6 +1,7 @@
 package com.impactledger.api.service;
 
 import com.impactledger.api.dto.PdfGenerationRequest;
+import com.impactledger.api.dto.StatsResponse;
 import com.impactledger.api.entity.Recognition;
 import com.impactledger.api.entity.Task;
 import com.impactledger.api.entity.enums.AppraisalType;
@@ -16,8 +17,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.time.LocalDate;
 import java.time.YearMonth;
-import java.time.format.DateTimeFormatter;
 import java.time.format.TextStyle;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -33,20 +34,41 @@ public class PdfService {
     private final RecognitionService recognitionService;
     private final ChartImageService chartImageService;
 
+    // ---- Palette: quiet, deliberate, matches the app's own badge colors ----
+    private static final Color INK = new Color(0x2B, 0x2B, 0x2B);
+    private static final Color MUTED = new Color(0x8F, 0x8F, 0x8F);
+    private static final Color HAIRLINE = new Color(0xE3, 0xE3, 0xE3);
+    private static final Color HAIRLINE_STRONG = new Color(0xC9, 0xC9, 0xC9);
     private static final Color BRAND = new Color(0x1F, 0x3A, 0x5F);
-    private static final Color ACCENT = new Color(0x3E, 0x92, 0xCC);
-    private static final Color LIGHT_GREY = new Color(0xF2, 0xF4, 0xF7);
-    private static final Color TEXT_GREY = new Color(0x55, 0x5B, 0x66);
 
-    private static final Font FONT_TITLE = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 26, BRAND);
-    private static final Font FONT_SUBTITLE = FontFactory.getFont(FontFactory.HELVETICA, 13, TEXT_GREY);
-    private static final Font FONT_SECTION = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 15, BRAND);
-    private static final Font FONT_SUBSECTION = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, Color.WHITE);
-    private static final Font FONT_TABLE_HEADER = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8, Color.WHITE);
-    private static final Font FONT_TABLE_CELL = FontFactory.getFont(FontFactory.HELVETICA, 8, Color.BLACK);
-    private static final Font FONT_STAT_NUMBER = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 20, BRAND);
-    private static final Font FONT_STAT_LABEL = FontFactory.getFont(FontFactory.HELVETICA, 8, TEXT_GREY);
-    private static final Font FONT_SMALL_ITALIC = FontFactory.getFont(FontFactory.HELVETICA_OBLIQUE, 8, TEXT_GREY);
+    private static final Color P1_COLOR = new Color(0xE5, 0x48, 0x4D);
+    private static final Color P2_COLOR = new Color(0xE0, 0xA8, 0x2E);
+    private static final Color P3_COLOR = new Color(0x3E, 0x92, 0xCC);
+    private static final Color MINOR_COLOR = new Color(0x5F, 0x6B, 0x80);
+
+    private static final Color[] CHART_PALETTE = {
+            BRAND,
+            new Color(0x3E, 0x92, 0xCC), // teal
+            new Color(0xC9, 0xA4, 0x5C), // gold
+            new Color(0xB5, 0x65, 0x7A), // rose
+            new Color(0x7A, 0x9E, 0x7E), // sage
+            new Color(0x8A, 0x93, 0xA6), // slate
+            new Color(0xA0, 0x7A, 0xB5), // muted purple
+    };
+
+    // ---- Type: serif for the name (mirrors an invoice letterhead), sans everywhere else ----
+    private static final Font FONT_NAME = FontFactory.getFont(FontFactory.TIMES_BOLD, 27, INK);
+    private static final Font FONT_SUBTITLE = FontFactory.getFont(FontFactory.HELVETICA, 11, MUTED);
+    private static final Font FONT_STAT_NUMBER = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 22, INK);
+    private static final Font FONT_STAT_LABEL = FontFactory.getFont(FontFactory.HELVETICA, 8, MUTED);
+    private static final Font FONT_SECTION = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 13, INK);
+    private static final Font FONT_TABLE_HEADER = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 7.5f, MUTED);
+    private static final Font FONT_BODY = FontFactory.getFont(FontFactory.HELVETICA, 9, INK);
+    private static final Font FONT_BODY_MUTED = FontFactory.getFont(FontFactory.HELVETICA, 8, MUTED);
+    private static final Font FONT_SMALL_ITALIC = FontFactory.getFont(FontFactory.HELVETICA_OBLIQUE, 8, MUTED);
+    private static final Font FONT_LEGEND_LABEL = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9, INK);
+    private static final Font FONT_LEGEND_SUB = FontFactory.getFont(FontFactory.HELVETICA, 8, MUTED);
+    private static final Font FONT_LINK = FontFactory.getFont(FontFactory.HELVETICA, 8, BRAND);
 
     @Transactional(readOnly = true)
     public byte[] generate(PdfGenerationRequest request) {
@@ -61,7 +83,7 @@ public class PdfService {
                 ? "Software Engineer" : request.getProfileTitle();
 
         try {
-            Document document = new Document(PageSize.A4, 36, 36, 54, 46);
+            Document document = new Document(PageSize.A4, 42, 42, 56, 48);
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             PdfWriter writer = PdfWriter.getInstance(document, baos);
             writer.setPageEvent(new FooterEvent());
@@ -90,17 +112,15 @@ public class PdfService {
         }
         int maxQuarter = request.getAppraisalType() == AppraisalType.MIDYEAR ? 2 : 4;
         String periodLabel = request.getAppraisalType() == AppraisalType.MIDYEAR
-                ? "Mid-Year Review " + request.getYear() + " (Jan - Jun)"
+                ? "Mid-Year Review " + request.getYear() + " · Jan\u2013Jun"
                 : "Year-End Review " + request.getYear();
 
         addCoverPage(document, profileName, profileTitle, periodLabel, tasks);
 
-        // Charts page
         document.newPage();
         addSectionHeading(document, "Overview");
-        addChartsRow(document, tasks);
+        addOverviewCharts(document, tasks);
 
-        // Group tasks by quarter (1-4), keeping only quarters within scope
         Map<Integer, List<Task>> byQuarter = tasks.stream()
                 .filter(t -> quarterOf(t) != null && quarterOf(t) <= maxQuarter)
                 .collect(Collectors.groupingBy(this::quarterOf, TreeMap::new, Collectors.toList()));
@@ -109,6 +129,7 @@ public class PdfService {
             document.newPage();
             addSectionHeading(document, "Q" + entry.getKey() + " " + request.getYear() + " Highlights");
             addQuarterMonthlyMetrics(document, entry.getValue());
+            addSpacer(document, 8f);
             addCrispTaskTable(document, entry.getValue());
         }
 
@@ -121,50 +142,49 @@ public class PdfService {
 
         PdfPTable table = new PdfPTable(4);
         table.setWidthPercentage(100);
-        table.setSpacingBefore(6);
-        table.setSpacingAfter(10);
-        addHeaderCell(table, "Month");
-        addHeaderCell(table, "Tasks");
-        addHeaderCell(table, "P1 / Major");
-        addHeaderCell(table, "PRs Merged");
+        table.setSpacingAfter(4);
+        addTableHeaderCell(table, "MONTH");
+        addTableHeaderCell(table, "TASKS");
+        addTableHeaderCell(table, "P1 / MAJOR");
+        addTableHeaderCell(table, "PRs MERGED");
 
         for (Map.Entry<String, List<Task>> monthEntry : byMonth.entrySet()) {
             List<Task> monthTasks = monthEntry.getValue();
             long p1Major = monthTasks.stream().filter(t ->
-                    t.getPriority() != null && t.getPriority().name().equals("P1")
+                    (t.getPriority() != null && t.getPriority().name().equals("P1"))
                             || (t.getComplexity() != null && t.getComplexity().name().equals("MAJOR"))
             ).count();
             long prs = monthTasks.stream().mapToLong(t -> t.getPrLinks() != null ? t.getPrLinks().size() : 0).sum();
 
-            addBodyCell(table, monthEntry.getKey());
-            addBodyCell(table, String.valueOf(monthTasks.size()));
-            addBodyCell(table, String.valueOf(p1Major));
-            addBodyCell(table, String.valueOf(prs));
+            addTableBodyCell(table, monthEntry.getKey(), Element.ALIGN_LEFT);
+            addTableBodyCell(table, String.valueOf(monthTasks.size()), Element.ALIGN_LEFT);
+            addTableBodyCell(table, String.valueOf(p1Major), Element.ALIGN_LEFT);
+            addTableBodyCell(table, String.valueOf(prs), Element.ALIGN_LEFT);
         }
         document.add(table);
     }
 
     // ---------------------------------------------------------------------
-    // MONTHLY MODE (for the end-of-month progress email to leaders)
+    // MONTHLY MODE
     // ---------------------------------------------------------------------
 
     private void buildMonthlyPdf(Document document, PdfGenerationRequest request, List<Task> tasks,
                                  String profileName, String profileTitle) throws DocumentException, IOException {
         String periodLabel;
         if (request.getCustomStartDate() != null && request.getCustomEndDate() != null) {
-            periodLabel = "Progress Update: " + request.getCustomStartDate() + " to " + request.getCustomEndDate();
+            periodLabel = "Progress Update \u00b7 " + request.getCustomStartDate() + " to " + request.getCustomEndDate();
         } else if (request.getMonth() != null) {
             YearMonth ym = YearMonth.of(request.getYear(), request.getMonth());
-            periodLabel = "Progress Update: " + ym.getMonth().getDisplayName(TextStyle.FULL, Locale.ENGLISH) + " " + request.getYear();
+            periodLabel = "Progress Update \u00b7 " + ym.getMonth().getDisplayName(TextStyle.FULL, Locale.ENGLISH) + " " + request.getYear();
         } else {
-            periodLabel = "Progress Update: " + request.getYear();
+            periodLabel = "Progress Update \u00b7 " + request.getYear();
         }
 
         addCoverPage(document, profileName, profileTitle, periodLabel, tasks);
 
         document.newPage();
         addSectionHeading(document, "Overview");
-        addChartsRow(document, tasks);
+        addOverviewCharts(document, tasks);
 
         document.newPage();
         addSectionHeading(document, "Tasks This Period");
@@ -174,89 +194,177 @@ public class PdfService {
     }
 
     // ---------------------------------------------------------------------
-    // Shared building blocks
+    // Cover page
     // ---------------------------------------------------------------------
 
     private void addCoverPage(Document document, String name, String title, String periodLabel, List<Task> tasks) throws DocumentException {
-        Paragraph spacer = new Paragraph(" ");
-        spacer.setSpacingAfter(60f);
-        document.add(spacer);
+        addSpacer(document, 70f);
 
-        Paragraph nameP = new Paragraph(name, FONT_TITLE);
+        Paragraph nameP = new Paragraph(name, FONT_NAME);
         nameP.setAlignment(Element.ALIGN_CENTER);
         document.add(nameP);
 
-        Paragraph titleP = new Paragraph(title, FONT_SUBTITLE);
+        Paragraph titleP = new Paragraph(title.toUpperCase(Locale.ENGLISH), FONT_SUBTITLE);
         titleP.setAlignment(Element.ALIGN_CENTER);
-        titleP.setSpacingAfter(4f);
+        titleP.setSpacingBefore(4f);
         document.add(titleP);
 
         Paragraph periodP = new Paragraph(periodLabel, FONT_SUBTITLE);
         periodP.setAlignment(Element.ALIGN_CENTER);
-        periodP.setSpacingAfter(40f);
+        periodP.setSpacingBefore(2f);
+        periodP.setSpacingAfter(46f);
         document.add(periodP);
 
-        // Headline stat cards
         long totalPrs = tasks.stream().mapToLong(t -> t.getPrLinks() != null ? t.getPrLinks().size() : 0).sum();
         long totalDocs = tasks.stream().filter(t -> t.getDesignDocLink() != null && !t.getDesignDocLink().isBlank()).count();
         long completed = tasks.stream().filter(t -> t.getStatus() != null && t.getStatus().name().equals("COMPLETED")).count();
         long p1s = tasks.stream().filter(t -> t.getPriority() != null && t.getPriority().name().equals("P1")).count();
 
-        PdfPTable statTable = new PdfPTable(4);
-        statTable.setWidthPercentage(100);
-        addStatCell(statTable, String.valueOf(tasks.size()), "Tasks Delivered");
-        addStatCell(statTable, String.valueOf(completed), "Completed");
-        addStatCell(statTable, String.valueOf(p1s), "P1 Initiatives");
-        addStatCell(statTable, String.valueOf(totalPrs), "PRs Merged");
-        document.add(statTable);
+        document.add(statStrip(
+                new String[]{String.valueOf(tasks.size()), String.valueOf(completed), String.valueOf(p1s), String.valueOf(totalPrs)},
+                new String[]{"TASKS DELIVERED", "COMPLETED", "P1 INITIATIVES", "PRs MERGED"}
+        ));
 
-        Paragraph docsP = new Paragraph(totalDocs + " design docs authored/updated", FONT_SMALL_ITALIC);
+        Paragraph docsP = new Paragraph(totalDocs + " design docs authored or updated", FONT_SMALL_ITALIC);
         docsP.setAlignment(Element.ALIGN_CENTER);
-        docsP.setSpacingBefore(10f);
+        docsP.setSpacingBefore(14f);
         document.add(docsP);
     }
 
-    private void addChartsRow(Document document, List<Task> tasks) throws DocumentException, IOException {
-        var stats = statsService.buildStats(tasks);
+    /** A minimal, borderless stat strip: big number, small caps label, thin vertical dividers. */
+    private PdfPTable statStrip(String[] numbers, String[] labels) throws DocumentException {
+        PdfPTable table = new PdfPTable(numbers.length);
+        table.setWidthPercentage(90);
+        table.setHorizontalAlignment(Element.ALIGN_CENTER);
+        for (int i = 0; i < numbers.length; i++) {
+            PdfPCell cell = new PdfPCell();
+            cell.setBorder(i == 0 ? Rectangle.NO_BORDER : Rectangle.LEFT);
+            cell.setBorderColor(HAIRLINE);
+            cell.setBorderWidthLeft(0.75f);
+            cell.setUseVariableBorders(true);
+            cell.setPadding(6);
+            cell.setHorizontalAlignment(Element.ALIGN_CENTER);
+            Paragraph p = new Paragraph();
+            p.setAlignment(Element.ALIGN_CENTER);
+            p.add(new Chunk(numbers[i] + "\n", FONT_STAT_NUMBER));
+            p.add(new Chunk(labels[i], FONT_STAT_LABEL));
+            cell.addElement(p);
+            table.addCell(cell);
+        }
+        return table;
+    }
 
-        byte[] priorityPng = chartImageService.pieChart("By Priority", stats.getByPriority(), 260, 220);
-        byte[] typePng = chartImageService.pieChart("By Task Type", stats.getByTaskType(), 260, 220);
-        byte[] monthPng = chartImageService.barChart("Completed Tasks by Month", "Month", "Tasks", stats.getTasksCompletedByMonth(), 520, 220);
+    // ---------------------------------------------------------------------
+    // Overview: donut charts with a text legend + a quiet bar chart
+    // ---------------------------------------------------------------------
 
-        PdfPTable row = new PdfPTable(2);
-        row.setWidthPercentage(100);
-        row.setSpacingBefore(8);
-        row.addCell(imageCell(priorityPng));
-        row.addCell(imageCell(typePng));
-        document.add(row);
+    private void addOverviewCharts(Document document, List<Task> tasks) throws DocumentException, IOException {
+        StatsResponse stats = statsService.buildStats(tasks);
 
-        Image monthImg = Image.getInstance(monthPng);
-        monthImg.scaleToFit(520, 220);
-        monthImg.setAlignment(Element.ALIGN_CENTER);
-        monthImg.setSpacingBefore(6f);
-        document.add(monthImg);
+        List<String> priorityOrder = List.of("P1", "P2", "P3", "MINOR");
+        Color[] priorityColors = {P1_COLOR, P2_COLOR, P3_COLOR, MINOR_COLOR};
+        document.add(donutWithLegend("By Priority", stats.getByPriority(), priorityOrder, priorityColors));
+        addSpacer(document, 12f);
 
-        // Tech stack summary as a compact tag line rather than another chart (keeps page count down)
+        List<String> typeOrder = new ArrayList<>(stats.getByTaskType().keySet());
+        document.add(donutWithLegend("By Task Type", stats.getByTaskType(), typeOrder, CHART_PALETTE));
+        addSpacer(document, 14f);
+
+        if (!stats.getTasksCompletedByMonth().isEmpty()) {
+            Paragraph monthHeading = new Paragraph("Completed Tasks by Month", FONT_LEGEND_LABEL);
+            monthHeading.setSpacingAfter(6f);
+            document.add(monthHeading);
+            byte[] monthPng = chartImageService.barChart("Month", "Tasks", stats.getTasksCompletedByMonth(), BRAND, 480, 170);
+            Image monthImg = Image.getInstance(monthPng);
+            monthImg.scaleToFit(480, 170);
+            monthImg.setAlignment(Element.ALIGN_LEFT);
+            document.add(monthImg);
+            addSpacer(document, 10f);
+        }
+
         if (!stats.getByTechStack().isEmpty()) {
             String techLine = stats.getByTechStack().entrySet().stream()
                     .sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
                     .limit(10)
-                    .map(e -> e.getKey() + " (" + e.getValue() + ")")
-                    .collect(Collectors.joining("   •   "));
-            Paragraph techP = new Paragraph("Tech touched: " + techLine, FONT_SMALL_ITALIC);
-            techP.setSpacingBefore(10f);
+                    .map(Map.Entry::getKey)
+                    .collect(Collectors.joining("   \u00b7   "));
+            Paragraph techLabel = new Paragraph("TECH TOUCHED", FONT_STAT_LABEL);
+            techLabel.setSpacingBefore(4f);
+            document.add(techLabel);
+            Paragraph techP = new Paragraph(techLine, FONT_BODY_MUTED);
+            techP.setSpacingBefore(2f);
             document.add(techP);
         }
     }
 
+    /** Chart on the left, a clean text legend (swatch + label + share) on the right — like a quotation's cost breakdown. */
+    private PdfPTable donutWithLegend(String heading, Map<String, Long> data, List<String> orderedKeys, Color[] colors) throws DocumentException, IOException {
+        long total = orderedKeys.stream().mapToLong(k -> data.getOrDefault(k, 0L)).sum();
+
+        List<String> presentKeys = orderedKeys.stream().filter(k -> data.getOrDefault(k, 0L) > 0).toList();
+        byte[] donutPng = chartImageService.donutChart(presentKeys, data, colors, 200, 200);
+
+        PdfPTable outer = new PdfPTable(new float[]{1f, 1.3f});
+        outer.setWidthPercentage(100);
+
+        PdfPCell headingCell = new PdfPCell(new Phrase(heading, FONT_SECTION));
+        headingCell.setColspan(2);
+        headingCell.setBorder(Rectangle.NO_BORDER);
+        headingCell.setPaddingBottom(8);
+        outer.addCell(headingCell);
+
+        PdfPCell chartCell = new PdfPCell(Image.getInstance(donutPng), false);
+        chartCell.setBorder(Rectangle.NO_BORDER);
+        chartCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        chartCell.setPadding(4);
+        outer.addCell(chartCell);
+
+        PdfPTable legend = new PdfPTable(new float[]{0.12f, 1f});
+        legend.setWidthPercentage(100);
+        int colorIndex = 0;
+        for (String key : presentKeys) {
+            long value = data.getOrDefault(key, 0L);
+            double pct = total > 0 ? (value * 100.0 / total) : 0;
+
+            PdfPCell swatch = new PdfPCell();
+            swatch.setBorder(Rectangle.NO_BORDER);
+            swatch.setBackgroundColor(colors[colorIndex % colors.length]);
+            swatch.setFixedHeight(10f);
+            swatch.setPaddingTop(4);
+            legend.addCell(swatch);
+
+            PdfPCell labelCell = new PdfPCell();
+            labelCell.setBorder(Rectangle.NO_BORDER);
+            labelCell.setPaddingBottom(6);
+            Paragraph p = new Paragraph();
+            p.add(new Chunk(key + "  ", FONT_LEGEND_LABEL));
+            p.add(new Chunk(String.format("%.0f%%", pct), FONT_LEGEND_SUB));
+            p.add(new Chunk("  \u00b7  " + value + " task" + (value == 1 ? "" : "s"), FONT_LEGEND_SUB));
+            labelCell.addElement(p);
+            legend.addCell(labelCell);
+
+            colorIndex++;
+        }
+        PdfPCell legendCell = new PdfPCell(legend);
+        legendCell.setBorder(Rectangle.NO_BORDER);
+        legendCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        legendCell.setPadding(4);
+        outer.addCell(legendCell);
+
+        return outer;
+    }
+
+    // ---------------------------------------------------------------------
+    // Task table — decluttered: no raw URLs, tighter impact text, colored priority
+    // ---------------------------------------------------------------------
+
     private void addCrispTaskTable(Document document, List<Task> tasks) throws DocumentException {
-        PdfPTable table = new PdfPTable(new float[]{2.6f, 1.4f, 3f, 2f});
+        PdfPTable table = new PdfPTable(new float[]{2.7f, 1f, 3.4f, 1.6f});
         table.setWidthPercentage(100);
-        table.setSpacingBefore(4);
-        addHeaderCell(table, "Task");
-        addHeaderCell(table, "Priority / Type");
-        addHeaderCell(table, "Impact");
-        addHeaderCell(table, "Links");
+        addTableHeaderCell(table, "TASK");
+        addTableHeaderCell(table, "PRIORITY");
+        addTableHeaderCell(table, "IMPACT");
+        addTableHeaderCell(table, "LINKS");
 
         List<Task> sorted = tasks.stream()
                 .sorted((a, b) -> {
@@ -268,24 +376,67 @@ public class PdfService {
                 .toList();
 
         for (Task t : sorted) {
-            addBodyCell(table, t.getTitle() + "\n" + t.getTicketId());
-            String typeLine = t.getPriority() + " / " + t.getComplexity()
-                    + (t.getTaskTypes() != null && !t.getTaskTypes().isEmpty() ? "\n" + String.join(", ", t.getTaskTypes()) : "");
-            addBodyCell(table, typeLine);
-            addBodyCell(table, crisp(t.getImpact() != null && !t.getImpact().isBlank() ? t.getImpact() : t.getDescription()));
+            PdfPCell taskCell = bodyCell();
+            Paragraph taskP = new Paragraph();
+            taskP.add(new Chunk(t.getTitle() + "\n", FONT_BODY));
+            taskP.add(new Chunk(t.getTicketId(), FONT_BODY_MUTED));
+            taskCell.addElement(taskP);
+            table.addCell(taskCell);
 
-            StringBuilder links = new StringBuilder();
-            if (t.getPrLinks() != null && !t.getPrLinks().isEmpty()) {
-                links.append(t.getPrLinks().size()).append(" PR(s)");
-            }
-            if (t.getDesignDocLink() != null && !t.getDesignDocLink().isBlank()) {
-                if (links.length() > 0) links.append("\n");
-                links.append("Doc: ").append(t.getDesignDocLink());
-            }
-            addBodyCell(table, links.toString());
+            PdfPCell priorityCell = bodyCell();
+            Font priorityFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9, priorityColor(t.getPriority() != null ? t.getPriority().name() : "MINOR"));
+            priorityCell.addElement(new Paragraph(t.getPriority() != null ? t.getPriority().name() : "-", priorityFont));
+            table.addCell(priorityCell);
+
+            PdfPCell impactCell = bodyCell();
+            impactCell.addElement(new Paragraph(crisp(t.getImpact() != null && !t.getImpact().isBlank() ? t.getImpact() : t.getDescription(), 150), FONT_BODY));
+            table.addCell(impactCell);
+
+            PdfPCell linksCell = bodyCell();
+            addLinksParagraph(linksCell, t);
+            table.addCell(linksCell);
         }
         document.add(table);
     }
+
+    private void addLinksParagraph(PdfPCell cell, Task t) {
+        Paragraph p = new Paragraph();
+        boolean any = false;
+        if (t.getPrLinks() != null && !t.getPrLinks().isEmpty()) {
+            if (t.getPrLinks().size() == 1) {
+                Chunk chunk = new Chunk("View PR \u2197", FONT_LINK);
+                chunk.setAnchor(t.getPrLinks().get(0));
+                p.add(chunk);
+            } else {
+                p.add(new Chunk(t.getPrLinks().size() + " PRs merged", FONT_BODY_MUTED));
+            }
+            any = true;
+        }
+        if (t.getDesignDocLink() != null && !t.getDesignDocLink().isBlank()) {
+            if (any) p.add(Chunk.NEWLINE);
+            Chunk chunk = new Chunk("View Doc \u2197", FONT_LINK);
+            chunk.setAnchor(t.getDesignDocLink());
+            p.add(chunk);
+            any = true;
+        }
+        if (!any) {
+            p.add(new Chunk("\u2014", FONT_BODY_MUTED));
+        }
+        cell.addElement(p);
+    }
+
+    private Color priorityColor(String priority) {
+        return switch (priority) {
+            case "P1" -> P1_COLOR;
+            case "P2" -> P2_COLOR;
+            case "P3" -> P3_COLOR;
+            default -> MINOR_COLOR;
+        };
+    }
+
+    // ---------------------------------------------------------------------
+    // Highlights & Recognition
+    // ---------------------------------------------------------------------
 
     private void addHighlightsAndRecognition(Document document, Long companyId, List<Task> tasks,
                                              LocalDate start, LocalDate end) throws DocumentException {
@@ -303,11 +454,11 @@ public class PdfService {
             addSectionHeading(document, "Highlights");
             for (Task t : highlights) {
                 Paragraph p = new Paragraph();
-                p.add(new Chunk(t.getTitle() + "  ", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, BRAND)));
+                p.add(new Chunk(t.getTitle() + "  ", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, INK)));
                 p.add(new Chunk("(" + t.getTicketId() + ")", FONT_SMALL_ITALIC));
                 document.add(p);
-                Paragraph impactP = new Paragraph(crisp(t.getImpact() != null ? t.getImpact() : t.getDescription()), FONT_TABLE_CELL);
-                impactP.setSpacingAfter(8f);
+                Paragraph impactP = new Paragraph(crisp(t.getImpact() != null ? t.getImpact() : t.getDescription(), 220), FONT_BODY);
+                impactP.setSpacingAfter(10f);
                 document.add(impactP);
             }
         }
@@ -316,9 +467,9 @@ public class PdfService {
             addSectionHeading(document, "Recognition");
             for (Recognition r : recognitions) {
                 Paragraph p = new Paragraph();
-                p.add(new Chunk(r.getDate() + " — " + r.getSource() + ": ", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9, BRAND)));
-                p.add(new Chunk(r.getMessage(), FONT_TABLE_CELL));
-                p.setSpacingAfter(4f);
+                p.add(new Chunk(r.getDate() + " \u2014 " + r.getSource() + ": ", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9, INK)));
+                p.add(new Chunk(r.getMessage(), FONT_BODY));
+                p.setSpacingAfter(6f);
                 document.add(p);
             }
         }
@@ -330,54 +481,67 @@ public class PdfService {
 
     private void addSectionHeading(Document document, String text) throws DocumentException {
         Paragraph p = new Paragraph(text, FONT_SECTION);
-        p.setSpacingBefore(4f);
-        p.setSpacingAfter(8f);
+        p.setSpacingAfter(2f);
+        document.add(p);
+
+        PdfPTable rule = new PdfPTable(1);
+        rule.setWidthPercentage(100);
+        PdfPCell cell = new PdfPCell();
+        cell.setBorder(Rectangle.BOTTOM);
+        cell.setBorderColor(HAIRLINE_STRONG);
+        cell.setBorderWidthBottom(1f);
+        cell.setUseVariableBorders(true);
+        cell.setFixedHeight(6f);
+        rule.addCell(cell);
+        rule.setSpacingAfter(10f);
+        document.add(rule);
+    }
+
+    private void addSpacer(Document document, float height) throws DocumentException {
+        Paragraph p = new Paragraph(" ");
+        p.setSpacingAfter(height);
         document.add(p);
     }
 
-    private void addHeaderCell(PdfPTable table, String text) {
+    private void addTableHeaderCell(PdfPTable table, String text) {
         PdfPCell cell = new PdfPCell(new Phrase(text, FONT_TABLE_HEADER));
-        cell.setBackgroundColor(BRAND);
-        cell.setPadding(5);
-        cell.setHorizontalAlignment(Element.ALIGN_LEFT);
-        table.addCell(cell);
-    }
-
-    private void addBodyCell(PdfPTable table, String text) {
-        PdfPCell cell = new PdfPCell(new Phrase(text == null ? "" : text, FONT_TABLE_CELL));
-        cell.setPadding(5);
+        cell.setBorder(Rectangle.BOTTOM);
+        cell.setBorderColor(HAIRLINE_STRONG);
+        cell.setBorderWidthBottom(1f);
+        cell.setUseVariableBorders(true);
+        cell.setPadding(6);
         cell.setBackgroundColor(Color.WHITE);
         table.addCell(cell);
     }
 
-    private void addStatCell(PdfPTable table, String number, String label) {
-        PdfPCell cell = new PdfPCell();
-        cell.setBackgroundColor(LIGHT_GREY);
-        cell.setPadding(12);
-        cell.setBorderColor(new Color(0xE0, 0xE0, 0xE0));
-        Paragraph p = new Paragraph();
-        p.setAlignment(Element.ALIGN_CENTER);
-        p.add(new Chunk(number + "\n", FONT_STAT_NUMBER));
-        p.add(new Chunk(label, FONT_STAT_LABEL));
-        cell.addElement(p);
+    private void addTableBodyCell(PdfPTable table, String text, int alignment) {
+        PdfPCell cell = new PdfPCell(new Phrase(text == null ? "" : text, FONT_BODY));
+        cell.setBorder(Rectangle.BOTTOM);
+        cell.setBorderColor(HAIRLINE);
+        cell.setBorderWidthBottom(0.5f);
+        cell.setUseVariableBorders(true);
+        cell.setPadding(6);
+        cell.setHorizontalAlignment(alignment);
+        cell.setBackgroundColor(Color.WHITE);
         table.addCell(cell);
     }
 
-    private PdfPCell imageCell(byte[] png) throws BadElementException, IOException {
-        Image img = Image.getInstance(png);
-        img.scaleToFit(260, 220);
-        PdfPCell cell = new PdfPCell(img, false);
-        cell.setBorder(Rectangle.NO_BORDER);
-        cell.setHorizontalAlignment(Element.ALIGN_CENTER);
+    private PdfPCell bodyCell() {
+        PdfPCell cell = new PdfPCell();
+        cell.setBorder(Rectangle.BOTTOM);
+        cell.setBorderColor(HAIRLINE);
+        cell.setBorderWidthBottom(0.5f);
+        cell.setUseVariableBorders(true);
+        cell.setPadding(7);
+        cell.setBackgroundColor(Color.WHITE);
         return cell;
     }
 
-    /** Trims verbose AI-generated text down to ~220 chars so the appraisal PDF stays crisp. */
-    private String crisp(String text) {
-        if (text == null || text.isBlank()) return "-";
+    /** Trims verbose text down for the table so the PDF stays crisp and readable. */
+    private String crisp(String text, int limit) {
+        if (text == null || text.isBlank()) return "\u2014";
         String cleaned = text.strip().replaceAll("\\s+", " ");
-        int limit = 220;
-        return cleaned.length() > limit ? cleaned.substring(0, limit).trim() + "…" : cleaned;
+        return cleaned.length() > limit ? cleaned.substring(0, limit).trim() + "\u2026" : cleaned;
     }
 
     private LocalDate referenceDate(Task t) {
@@ -413,7 +577,6 @@ public class PdfService {
         return YearMonth.of(request.getYear(), endMonth).atEndOfMonth();
     }
 
-    /** Simple "Page X of Y" footer across the whole document. */
     private static class FooterEvent extends PdfPageEventHelper {
         @Override
         public void onEndPage(PdfWriter writer, Document document) {
