@@ -66,6 +66,7 @@ public class TaskService {
         return tasks;
     }
 
+    @Transactional
     public TaskResponse create(TaskRequest request) {
         Company company = companyService.getEntity(request.getCompanyId());
         Task task = Task.builder().build();
@@ -73,6 +74,7 @@ public class TaskService {
         return toResponse(taskRepository.save(task));
     }
 
+    @Transactional
     public TaskResponse update(Long id, TaskRequest request) {
         Task task = getEntity(id);
         Company company = companyService.getEntity(request.getCompanyId());
