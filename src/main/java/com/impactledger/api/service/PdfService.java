@@ -391,6 +391,7 @@ public class PdfService {
     private String monthLabel(LocalDate date) {
         if (date == null) return "Unknown";
         return date.getMonth().getDisplayName(TextStyle.FULL, Locale.ENGLISH) + " " + date.getYear();
+
     }
 
     private LocalDate periodStart(PdfGenerationRequest request) {
