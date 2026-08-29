@@ -117,7 +117,6 @@ public class PdfService {
 
         addCoverPage(document, profileName, profileTitle, periodLabel, tasks);
 
-        document.newPage();
         addSectionHeading(document, "Overview");
         addOverviewCharts(document, tasks);
 
@@ -182,7 +181,6 @@ public class PdfService {
 
         addCoverPage(document, profileName, profileTitle, periodLabel, tasks);
 
-        document.newPage();
         addSectionHeading(document, "Overview");
         addOverviewCharts(document, tasks);
 
@@ -222,7 +220,8 @@ public class PdfService {
 
         document.add(statStrip(
                 new String[]{String.valueOf(tasks.size()), String.valueOf(completed), String.valueOf(p1s), String.valueOf(totalPrs)},
-                new String[]{"TASKS DELIVERED", "COMPLETED", "P1 INITIATIVES", "PRs MERGED"}
+                new String[]{"TASKS DELIVERED", "COMPLETED", "P1 INITIATIVES", "PRs MERGED"},
+                new Color[]{BRAND, new Color(0x1F, 0x8A, 0x54), P1_COLOR, new Color(0xB8, 0x86, 0x2E)}
         ));
 
         Paragraph docsP = new Paragraph(totalDocs + " design docs authored or updated", FONT_SMALL_ITALIC);
@@ -231,18 +230,21 @@ public class PdfService {
         document.add(docsP);
     }
 
-    /** A minimal, borderless stat strip: big number, small caps label, thin vertical dividers. */
-    private PdfPTable statStrip(String[] numbers, String[] labels) throws DocumentException {
+    /** Real bordered cards with a colored top accent — matches the web dashboard's stat tiles, not just numbers with dividers. */
+    private PdfPTable statStrip(String[] numbers, String[] labels, Color[] accents) throws DocumentException {
         PdfPTable table = new PdfPTable(numbers.length);
-        table.setWidthPercentage(90);
+        table.setWidthPercentage(100);
         table.setHorizontalAlignment(Element.ALIGN_CENTER);
+        table.setSpacingBefore(4f);
         for (int i = 0; i < numbers.length; i++) {
             PdfPCell cell = new PdfPCell();
-            cell.setBorder(i == 0 ? Rectangle.NO_BORDER : Rectangle.LEFT);
+            cell.setBorder(Rectangle.BOX);
             cell.setBorderColor(HAIRLINE);
-            cell.setBorderWidthLeft(0.75f);
+            cell.setBorderWidth(0.75f);
+            cell.setBorderWidthTop(2.5f);
+            cell.setBorderColorTop(accents[i % accents.length]);
             cell.setUseVariableBorders(true);
-            cell.setPadding(6);
+            cell.setPadding(14);
             cell.setHorizontalAlignment(Element.ALIGN_CENTER);
             Paragraph p = new Paragraph();
             p.setAlignment(Element.ALIGN_CENTER);
@@ -271,18 +273,32 @@ public class PdfService {
         addSpacer(document, 14f);
 
         if (!stats.getTasksCompletedByMonth().isEmpty()) {
-            Paragraph monthHeading = new Paragraph("Completed Tasks by Month", FONT_LEGEND_LABEL);
-            monthHeading.setSpacingAfter(6f);
+            // Give the bar chart a guaranteed fresh page so its heading and the
+            // image itself never get separated by an awkward page break.
+            document.newPage();
+            Paragraph monthHeading = new Paragraph("Completed Tasks by Month", FONT_SECTION);
+            monthHeading.setSpacingAfter(10f);
             document.add(monthHeading);
-            byte[] monthPng = chartImageService.barChart("Month", "Tasks", stats.getTasksCompletedByMonth(), BRAND, 480, 170);
+            byte[] monthPng = chartImageService.barChart("Month", "Tasks", stats.getTasksCompletedByMonth(), BRAND, 480, 200);
             Image monthImg = Image.getInstance(monthPng);
-            monthImg.scaleToFit(480, 170);
+            monthImg.scaleToFit(480, 200);
             monthImg.setAlignment(Element.ALIGN_LEFT);
             document.add(monthImg);
-            addSpacer(document, 10f);
-        }
+            addSpacer(document, 14f);
 
-        if (!stats.getByTechStack().isEmpty()) {
+            if (!stats.getByTechStack().isEmpty()) {
+                String techLine = stats.getByTechStack().entrySet().stream()
+                        .sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
+                        .limit(10)
+                        .map(Map.Entry::getKey)
+                        .collect(Collectors.joining("   \u00b7   "));
+                Paragraph techLabel = new Paragraph("TECH TOUCHED", FONT_STAT_LABEL);
+                document.add(techLabel);
+                Paragraph techP = new Paragraph(techLine, FONT_BODY_MUTED);
+                techP.setSpacingBefore(2f);
+                document.add(techP);
+            }
+        } else if (!stats.getByTechStack().isEmpty()) {
             String techLine = stats.getByTechStack().entrySet().stream()
                     .sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
                     .limit(10)
@@ -480,9 +496,24 @@ public class PdfService {
     // ---------------------------------------------------------------------
 
     private void addSectionHeading(Document document, String text) throws DocumentException {
-        Paragraph p = new Paragraph(text, FONT_SECTION);
-        p.setSpacingAfter(2f);
-        document.add(p);
+        PdfPTable header = new PdfPTable(new float[]{0.09f, 3f});
+        header.setWidthPercentage(100);
+        header.setSpacingAfter(2f);
+
+        PdfPCell markerCell = new PdfPCell();
+        markerCell.setBorder(Rectangle.NO_BORDER);
+        markerCell.setBackgroundColor(BRAND);
+        markerCell.setFixedHeight(15f);
+        markerCell.setPaddingRight(0);
+        header.addCell(markerCell);
+
+        PdfPCell textCell = new PdfPCell(new Phrase(text, FONT_SECTION));
+        textCell.setBorder(Rectangle.NO_BORDER);
+        textCell.setPaddingLeft(8);
+        textCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        header.addCell(textCell);
+
+        document.add(header);
 
         PdfPTable rule = new PdfPTable(1);
         rule.setWidthPercentage(100);
@@ -503,14 +534,16 @@ public class PdfService {
         document.add(p);
     }
 
+    private static final Color TABLE_HEADER_TINT = new Color(0xF3, 0xF6, 0xFA);
+
     private void addTableHeaderCell(PdfPTable table, String text) {
         PdfPCell cell = new PdfPCell(new Phrase(text, FONT_TABLE_HEADER));
         cell.setBorder(Rectangle.BOTTOM);
         cell.setBorderColor(HAIRLINE_STRONG);
         cell.setBorderWidthBottom(1f);
         cell.setUseVariableBorders(true);
-        cell.setPadding(6);
-        cell.setBackgroundColor(Color.WHITE);
+        cell.setPadding(7);
+        cell.setBackgroundColor(TABLE_HEADER_TINT);
         table.addCell(cell);
     }
 
