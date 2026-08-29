@@ -8,6 +8,7 @@ import com.impactledger.api.exception.ResourceNotFoundException;
 import com.impactledger.api.repository.CompanyRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -21,6 +22,7 @@ public class CompanyService {
         return companyRepository.findAll().stream().map(this::toResponse).toList();
     }
 
+    @Transactional
     public CompanyResponse create(CompanyRequest request) {
         if (companyRepository.existsByNameIgnoreCase(request.getName())) {
             throw new BadRequestException("A company named '" + request.getName() + "' already exists");
@@ -29,6 +31,18 @@ public class CompanyService {
                 .name(request.getName().trim())
                 .roleTitle(request.getRoleTitle())
                 .build();
+        return toResponse(companyRepository.save(company));
+    }
+
+    @Transactional
+    public CompanyResponse update(Long id, CompanyRequest request) {
+        Company company = getEntity(id);
+        if (!company.getName().equalsIgnoreCase(request.getName())
+                && companyRepository.existsByNameIgnoreCase(request.getName())) {
+            throw new BadRequestException("A company named '" + request.getName() + "' already exists");
+        }
+        company.setName(request.getName().trim());
+        company.setRoleTitle(request.getRoleTitle());
         return toResponse(companyRepository.save(company));
     }
 

@@ -28,6 +28,11 @@ public class CompanyController {
         return ResponseEntity.status(HttpStatus.CREATED).body(companyService.create(request));
     }
 
+    @PutMapping("/{id}")
+    public CompanyResponse update(@PathVariable Long id, @Valid @RequestBody CompanyRequest request) {
+        return companyService.update(id, request);
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         companyService.delete(id);
