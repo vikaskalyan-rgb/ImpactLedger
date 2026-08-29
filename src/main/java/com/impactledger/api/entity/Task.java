@@ -9,6 +9,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.BatchSize;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -45,6 +46,7 @@ public class Task {
     @ElementCollection
     @CollectionTable(name = "task_types", joinColumns = @JoinColumn(name = "task_id"))
     @Column(name = "task_type")
+    @BatchSize(size = 50)
     @Builder.Default
     private Set<String> taskTypes = new HashSet<>();
 
@@ -66,6 +68,7 @@ public class Task {
     @ElementCollection
     @CollectionTable(name = "task_pr_links", joinColumns = @JoinColumn(name = "task_id"))
     @Column(name = "pr_link", length = 1000)
+    @BatchSize(size = 50)
     @Builder.Default
     private List<String> prLinks = new ArrayList<>();
 
@@ -84,18 +87,21 @@ public class Task {
     @ElementCollection
     @CollectionTable(name = "task_tech_stack", joinColumns = @JoinColumn(name = "task_id"))
     @Column(name = "tech")
+    @BatchSize(size = 50)
     @Builder.Default
     private List<String> techStack = new ArrayList<>();
 
     @ElementCollection
     @CollectionTable(name = "task_collaborators", joinColumns = @JoinColumn(name = "task_id"))
     @Column(name = "collaborator")
+    @BatchSize(size = 50)
     @Builder.Default
     private List<String> collaborators = new ArrayList<>();
 
     @ElementCollection
     @CollectionTable(name = "task_tags", joinColumns = @JoinColumn(name = "task_id"))
     @Column(name = "tag")
+    @BatchSize(size = 50)
     @Builder.Default
     private List<String> tags = new ArrayList<>();
 
