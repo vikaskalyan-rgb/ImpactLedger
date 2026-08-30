@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.List;
 
 @Service
@@ -19,7 +20,7 @@ public class CompanyService {
     private final CompanyRepository companyRepository;
 
     public List<CompanyResponse> getAll() {
-        return companyRepository.findAll().stream().map(this::toResponse).toList();
+        return companyRepository.findByDeletedAtIsNull().stream().map(this::toResponse).toList();
     }
 
     @Transactional
@@ -46,11 +47,34 @@ public class CompanyService {
         return toResponse(companyRepository.save(company));
     }
 
+    // Soft delete — see TaskService.delete for the reasoning. Existing tasks/recognitions
+    // keep their (lazy) reference to this company; it just disappears from the switcher.
+    @Transactional
     public void delete(Long id) {
-        if (!companyRepository.existsById(id)) {
-            throw new ResourceNotFoundException("Company not found: " + id);
+        Company company = getEntity(id);
+        company.setDeletedAt(Instant.now());
+        companyRepository.save(company);
+    }
+
+    @Transactional
+    public CompanyResponse restore(Long id) {
+        Company company = getEntity(id);
+        company.setDeletedAt(null);
+        return toResponse(companyRepository.save(company));
+    }
+
+    @Transactional
+    public void purge(Long id) {
+        Company company = getEntity(id);
+        if (company.getDeletedAt() == null) {
+            throw new BadRequestException("Company must be moved to trash before it can be permanently deleted");
         }
-        companyRepository.deleteById(id);
+        companyRepository.delete(company);
+    }
+
+    @Transactional(readOnly = true)
+    public List<CompanyResponse> getTrash() {
+        return companyRepository.findByDeletedAtIsNotNullOrderByDeletedAtDesc().stream().map(this::toResponse).toList();
     }
 
     public Company getEntity(Long id) {
@@ -63,6 +87,7 @@ public class CompanyService {
                 .id(c.getId())
                 .name(c.getName())
                 .roleTitle(c.getRoleTitle())
+                .deletedAt(c.getDeletedAt())
                 .build();
     }
 }

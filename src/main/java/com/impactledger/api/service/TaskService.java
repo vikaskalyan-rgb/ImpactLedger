@@ -1,5 +1,6 @@
 package com.impactledger.api.service;
 
+import com.impactledger.api.dto.TaskBulkUpdateRequest;
 import com.impactledger.api.dto.TaskRequest;
 import com.impactledger.api.dto.TaskResponse;
 import com.impactledger.api.entity.Company;
@@ -7,6 +8,7 @@ import com.impactledger.api.entity.Task;
 import com.impactledger.api.entity.enums.Complexity;
 import com.impactledger.api.entity.enums.Priority;
 import com.impactledger.api.entity.enums.TaskStatus;
+import com.impactledger.api.exception.BadRequestException;
 import com.impactledger.api.exception.ResourceNotFoundException;
 import com.impactledger.api.repository.TaskRepository;
 import com.impactledger.api.repository.TaskSpecifications;
@@ -14,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -82,11 +85,62 @@ public class TaskService {
         return toResponse(taskRepository.save(task));
     }
 
+    // Soft delete: sets deletedAt instead of removing the row. TaskSpecifications
+    // unconditionally excludes non-null deletedAt from every normal search/list call,
+    // so this task simply disappears from the app until it's restored or purged.
+    @Transactional
     public void delete(Long id) {
-        if (!taskRepository.existsById(id)) {
-            throw new ResourceNotFoundException("Task not found: " + id);
+        Task task = getEntity(id);
+        task.setDeletedAt(Instant.now());
+        taskRepository.save(task);
+    }
+
+    @Transactional
+    public TaskResponse restore(Long id) {
+        Task task = getEntity(id);
+        task.setDeletedAt(null);
+        return toResponse(taskRepository.save(task));
+    }
+
+    // Permanent delete — only allowed on a task that's already in the trash, as a
+    // last safety rail against skipping the undo/restore step entirely.
+    @Transactional
+    public void purge(Long id) {
+        Task task = getEntity(id);
+        if (task.getDeletedAt() == null) {
+            throw new BadRequestException("Task must be moved to trash before it can be permanently deleted");
         }
-        taskRepository.deleteById(id);
+        taskRepository.delete(task);
+    }
+
+    @Transactional(readOnly = true)
+    public List<TaskResponse> getTrash(Long companyId) {
+        List<Task> trashed = companyId != null
+                ? taskRepository.findByDeletedAtIsNotNullAndCompanyIdOrderByDeletedAtDesc(companyId)
+                : taskRepository.findByDeletedAtIsNotNullOrderByDeletedAtDesc();
+        return trashed.stream().map(this::toResponse).toList();
+    }
+
+    @Transactional
+    public List<TaskResponse> bulkUpdate(TaskBulkUpdateRequest request) {
+        List<Task> tasks = getEntitiesByIds(request.getIds());
+        for (Task task : tasks) {
+            if (request.getIncludeInPdf() != null) {
+                task.setIncludeInPdf(request.getIncludeInPdf());
+            }
+            if (request.getHighlight() != null) {
+                task.setHighlight(request.getHighlight());
+            }
+        }
+        return taskRepository.saveAll(tasks).stream().map(this::toResponse).toList();
+    }
+
+    @Transactional
+    public void bulkDelete(List<Long> ids) {
+        List<Task> tasks = getEntitiesByIds(ids);
+        Instant now = Instant.now();
+        tasks.forEach(t -> t.setDeletedAt(now));
+        taskRepository.saveAll(tasks);
     }
 
     private void applyRequest(Task task, TaskRequest request, Company company) {
@@ -138,6 +192,7 @@ public class TaskService {
                 .highlight(t.isHighlight())
                 .createdAt(t.getCreatedAt())
                 .updatedAt(t.getUpdatedAt())
+                .deletedAt(t.getDeletedAt())
                 .build();
     }
 }

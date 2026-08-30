@@ -7,6 +7,10 @@ import java.time.LocalDate;
 import java.util.List;
 
 public interface RecognitionRepository extends JpaRepository<Recognition, Long> {
-    List<Recognition> findByCompanyIdAndDateBetweenOrderByDateAsc(Long companyId, LocalDate start, LocalDate end);
-    List<Recognition> findByDateBetweenOrderByDateAsc(LocalDate start, LocalDate end);
+    List<Recognition> findByCompanyIdAndDateBetweenAndDeletedAtIsNullOrderByDateAsc(Long companyId, LocalDate start, LocalDate end);
+    List<Recognition> findByDateBetweenAndDeletedAtIsNullOrderByDateAsc(LocalDate start, LocalDate end);
+    List<Recognition> findByDeletedAtIsNull();
+
+    // Trash listing.
+    List<Recognition> findByDeletedAtIsNotNullOrderByDeletedAtDesc();
 }

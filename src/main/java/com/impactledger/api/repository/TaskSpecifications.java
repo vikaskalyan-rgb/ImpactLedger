@@ -35,6 +35,10 @@ public final class TaskSpecifications {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
+            // Soft-deleted tasks never appear through the normal search/list endpoint —
+            // they're only visible via the dedicated /api/tasks/trash listing.
+            predicates.add(cb.isNull(root.get("deletedAt")));
+
             if (companyId != null) {
                 predicates.add(cb.equal(root.get("company").get("id"), companyId));
             }

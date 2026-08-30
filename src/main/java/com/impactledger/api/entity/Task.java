@@ -120,6 +120,11 @@ public class Task {
     private Instant createdAt;
     private Instant updatedAt;
 
+    // Soft delete: null = active. Set on delete, cleared on restore. Normal search/list
+    // queries always exclude non-null rows (see TaskSpecifications) so a deleted task never
+    // resurfaces on its own — it only comes back via an explicit restore from the trash view.
+    private Instant deletedAt;
+
     @PrePersist
     void prePersist() {
         Instant now = Instant.now();

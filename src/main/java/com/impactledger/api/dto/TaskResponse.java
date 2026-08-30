@@ -46,4 +46,7 @@ public class TaskResponse {
 
     private Instant createdAt;
     private Instant updatedAt;
+
+    /** Null unless this task is in the trash. */
+    private Instant deletedAt;
 }

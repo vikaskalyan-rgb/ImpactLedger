@@ -30,6 +30,12 @@ public class Company {
 
     private Instant createdAt;
 
+    // Soft delete — see Task.deletedAt for the pattern this follows. A deleted company
+    // disappears from the switcher but its tasks/recognitions keep pointing at it, and
+    // its name stays reserved (uniqueness check ignores deletedAt) until it's restored
+    // or purged, so you can't accidentally create a duplicate while the old one is in trash.
+    private Instant deletedAt;
+
     @PrePersist
     void prePersist() {
         this.createdAt = Instant.now();

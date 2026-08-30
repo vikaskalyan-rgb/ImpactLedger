@@ -1,5 +1,6 @@
 package com.impactledger.api.controller;
 
+import com.impactledger.api.dto.TaskBulkUpdateRequest;
 import com.impactledger.api.dto.TaskRequest;
 import com.impactledger.api.dto.TaskResponse;
 import com.impactledger.api.entity.enums.Complexity;
@@ -39,6 +40,14 @@ public class TaskController {
         return taskService.search(companyId, priority, complexity, status, taskType, startDate, endDate, search, includeInPdf, highlight);
     }
 
+    // Literal "/trash" is matched ahead of the "/{id}" pattern below regardless of
+    // declaration order — Spring's path matcher always prefers an exact segment
+    // over a variable one, so this never risks binding "trash" as an id.
+    @GetMapping("/trash")
+    public List<TaskResponse> trash(@RequestParam(required = false) Long companyId) {
+        return taskService.getTrash(companyId);
+    }
+
     @GetMapping("/{id}")
     public TaskResponse getById(@PathVariable Long id) {
         return taskService.getById(id);
@@ -57,6 +66,28 @@ public class TaskController {
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         taskService.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/restore")
+    public TaskResponse restore(@PathVariable Long id) {
+        return taskService.restore(id);
+    }
+
+    @DeleteMapping("/{id}/permanent")
+    public ResponseEntity<Void> purge(@PathVariable Long id) {
+        taskService.purge(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/bulk")
+    public List<TaskResponse> bulkUpdate(@Valid @RequestBody TaskBulkUpdateRequest request) {
+        return taskService.bulkUpdate(request);
+    }
+
+    @DeleteMapping("/bulk")
+    public ResponseEntity<Void> bulkDelete(@RequestParam List<Long> ids) {
+        taskService.bulkDelete(ids);
         return ResponseEntity.noContent().build();
     }
 }

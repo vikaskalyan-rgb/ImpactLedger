@@ -8,4 +8,9 @@ import java.util.List;
 
 public interface TaskRepository extends JpaRepository<Task, Long>, JpaSpecificationExecutor<Task> {
     List<Task> findByIdIn(List<Long> ids);
+
+    // Trash listing — deliberately separate from TaskSpecifications, which always
+    // excludes deleted rows from normal search results.
+    List<Task> findByDeletedAtIsNotNullAndCompanyIdOrderByDeletedAtDesc(Long companyId);
+    List<Task> findByDeletedAtIsNotNullOrderByDeletedAtDesc();
 }

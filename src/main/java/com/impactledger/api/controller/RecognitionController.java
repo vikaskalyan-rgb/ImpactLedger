@@ -33,4 +33,20 @@ public class RecognitionController {
         recognitionService.delete(id);
         return ResponseEntity.noContent().build();
     }
+
+    @GetMapping("/trash")
+    public List<RecognitionResponse> trash() {
+        return recognitionService.getTrash();
+    }
+
+    @PostMapping("/{id}/restore")
+    public RecognitionResponse restore(@PathVariable Long id) {
+        return recognitionService.restore(id);
+    }
+
+    @DeleteMapping("/{id}/permanent")
+    public ResponseEntity<Void> purge(@PathVariable Long id) {
+        recognitionService.purge(id);
+        return ResponseEntity.noContent().build();
+    }
 }

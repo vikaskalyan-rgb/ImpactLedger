@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.Instant;
 import java.time.LocalDate;
 
 @Data
@@ -17,4 +18,7 @@ public class RecognitionResponse {
     private LocalDate date;
     private String source;
     private String message;
+
+    /** Null unless this recognition is in the trash. */
+    private Instant deletedAt;
 }

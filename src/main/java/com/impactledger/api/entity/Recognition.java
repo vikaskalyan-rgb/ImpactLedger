@@ -39,6 +39,9 @@ public class Recognition {
 
     private Instant createdAt;
 
+    // Soft delete — see Task.deletedAt for the pattern this follows.
+    private Instant deletedAt;
+
     @PrePersist
     void prePersist() {
         this.createdAt = Instant.now();

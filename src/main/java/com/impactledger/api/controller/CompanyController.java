@@ -38,4 +38,20 @@ public class CompanyController {
         companyService.delete(id);
         return ResponseEntity.noContent().build();
     }
+
+    @GetMapping("/trash")
+    public List<CompanyResponse> trash() {
+        return companyService.getTrash();
+    }
+
+    @PostMapping("/{id}/restore")
+    public CompanyResponse restore(@PathVariable Long id) {
+        return companyService.restore(id);
+    }
+
+    @DeleteMapping("/{id}/permanent")
+    public ResponseEntity<Void> purge(@PathVariable Long id) {
+        companyService.purge(id);
+        return ResponseEntity.noContent().build();
+    }
 }
